@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import os
 import shutil
 import subprocess
@@ -64,11 +63,6 @@ class BoundedBuildLog:
         self.file.close()
 
 
-def signing_is_configured() -> bool:
-    names = ("KEYSTORE_BASE64", "KEYSTORE_PASSWORD", "KEY_ALIAS", "KEY_PASSWORD")
-    return all(os.getenv(name, "").strip() for name in names)
-
-
 def execute_build(
     settings: Settings,
     build_id: str,
@@ -82,8 +76,6 @@ def execute_build(
     progress: Progress,
     cancel_event: threading.Event,
 ) -> None:
-    if not signing_is_configured():
-        raise BuildFailure("Release signing is not configured on this server.")
     log_path.parent.mkdir(parents=True, exist_ok=True)
     build_home = settings.build_root / build_id
     work = build_home / "work"
@@ -125,27 +117,8 @@ def execute_build(
         del key, key_hex
         _check_cancel(cancel_event)
 
-        keystore_path = work / "release.keystore"
         process_env = os.environ.copy()
-        for secret_name in ("KEYSTORE_BASE64", "KEYSTORE_PASSWORD", "KEY_ALIAS", "KEY_PASSWORD"):
-            process_env.pop(secret_name, None)
-        try:
-            raw_keystore = base64.b64decode(os.environ["KEYSTORE_BASE64"], validate=True)
-            if not raw_keystore or len(raw_keystore) > 32 * 1024 * 1024:
-                raise ValueError("invalid keystore size")
-            keystore_path.write_bytes(raw_keystore)
-            try:
-                keystore_path.chmod(0o600)
-            except OSError:
-                pass
-            del raw_keystore
-        except (ValueError, KeyError) as exc:
-            raise BuildFailure("The release signing keystore configuration is invalid.") from exc
         process_env.update({
-            "APK_SIGNING_STORE_FILE": str(keystore_path),
-            "APK_SIGNING_STORE_PASSWORD": os.environ["KEYSTORE_PASSWORD"],
-            "APK_SIGNING_KEY_ALIAS": os.environ["KEY_ALIAS"],
-            "APK_SIGNING_KEY_PASSWORD": os.environ["KEY_PASSWORD"],
             "ANDROID_SDK_ROOT": os.getenv("ANDROID_SDK_ROOT", "/opt/android-sdk"),
             "ANDROID_HOME": os.getenv("ANDROID_HOME", os.getenv("ANDROID_SDK_ROOT", "/opt/android-sdk")),
             "ANDROID_NDK_HOME": os.getenv("ANDROID_NDK_HOME", "/opt/android-sdk/ndk/27.2.12479018"),
@@ -156,9 +129,9 @@ def execute_build(
         _check_cancel(cancel_event)
 
         progress("Creating APK", 92)
-        apk = android_project / "app/build/outputs/apk/release/app-release.apk"
+        apk = android_project / "app/build/outputs/apk/debug/app-debug.apk"
         if not apk.is_file() or apk.stat().st_size < 4096:
-            raise BuildFailure("Gradle completed without producing a valid release APK.")
+            raise BuildFailure("Gradle completed without producing a valid debug APK.")
         _audit_apk(apk)
         _verify_apk_package(apk, package_name, process_env, gradle_log)
         _verify_apk_signature(apk, process_env, gradle_log)
@@ -204,7 +177,7 @@ def _run_gradle(project: Path, env: dict[str, str], log, progress: Progress, can
     executable = project / ("gradlew.bat" if os.name == "nt" else "gradlew")
     if os.name != "nt" and not os.access(executable, os.X_OK):
         executable.chmod(0o755)
-    command = [str(executable), "--no-daemon", "--console=plain", "--stacktrace", "assembleRelease"]
+    command = [str(executable), "--no-daemon", "--console=plain", "--stacktrace", "assembleDebug"]
     try:
         process = subprocess.Popen(
             command,
@@ -252,11 +225,11 @@ def _run_gradle(project: Path, env: dict[str, str], log, progress: Progress, can
             log.write(line)
             log.flush()
             if "> Task :app:" in line:
-                if "externalNativeBuildRelease" in line:
+                if "externalNativeBuildDebug" in line:
                     progress("Running Gradle", 68)
                 elif "externalNativeBuild" in line or "configureCMake" in line or "buildCMake" in line:
                     progress("Building native library", 58)
-                elif "packageRelease" in line or "assembleRelease" in line:
+                elif "packageDebug" in line or "assembleDebug" in line:
                     progress("Creating APK", 88)
         return_code = process.wait()
     finally:
@@ -272,7 +245,7 @@ def _run_gradle(project: Path, env: dict[str, str], log, progress: Progress, can
         if process.stdout is not None:
             process.stdout.close()
     if return_code != 0:
-        raise BuildFailure("The Android release build failed. Review the server-side build log and try again.")
+        raise BuildFailure("The Android debug build failed. Review the server-side build log and try again.")
 
 
 def _audit_apk(apk: Path) -> None:
@@ -302,7 +275,7 @@ def _verify_apk_signature(apk: Path, env: dict[str, str], log) -> None:
     log.write(result.stdout)
     log.write(result.stderr)
     if result.returncode != 0:
-        raise BuildFailure("The APK release signature could not be verified.")
+        raise BuildFailure("The APK signature could not be verified.")
 
 
 def _verify_apk_package(apk: Path, package_name: str, env: dict[str, str], log) -> None:
@@ -322,4 +295,4 @@ def _verify_apk_package(apk: Path, package_name: str, env: dict[str, str], log) 
     log.write(result.stderr)
     expected = f"package: name='{package_name}'"
     if result.returncode != 0 or expected not in result.stdout:
-        raise BuildFailure("The release APK does not contain the requested Android package name.")
+        raise BuildFailure("The APK does not contain the requested Android package name.")

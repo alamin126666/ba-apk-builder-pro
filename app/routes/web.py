@@ -55,12 +55,10 @@ async def dashboard(request: Request) -> Response:
     csrf = request.app.state.sessions.verify(token)
     if csrf is None:
         return RedirectResponse("/login", status_code=303)
-    from app.builder import signing_is_configured
-
     return request.app.state.templates.TemplateResponse(
         request,
         "dashboard.html",
-        {"csrf_token": csrf, "signing_ready": signing_is_configured()},
+        {"csrf_token": csrf},
         headers={"Cache-Control": "no-store"},
     )
 

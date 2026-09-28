@@ -15,10 +15,8 @@ from conftest import PROJECT_ROOT, TEST_PASSWORD
 
 
 @pytest.mark.android_integration
-@pytest.mark.skipif(os.getenv("RUN_ANDROID_INTEGRATION") != "1", reason="Requires an installed Android SDK/NDK and private release signing variables.")
-def test_real_signed_release_apk_contains_only_protected_web_assets(tmp_path: Path, monkeypatch) -> None:
-    for name in ("KEYSTORE_BASE64", "KEYSTORE_PASSWORD", "KEY_ALIAS", "KEY_PASSWORD"):
-        assert os.getenv(name), f"{name} is required to run the Android integration test"
+@pytest.mark.skipif(os.getenv("RUN_ANDROID_INTEGRATION") != "1", reason="Requires an installed Android SDK/NDK.")
+def test_real_debug_apk_contains_only_protected_web_assets(tmp_path: Path) -> None:
     settings = Settings(
         admin_password=TEST_PASSWORD,
         session_secret="integration-session-secret-6c2d9a7",
@@ -56,7 +54,7 @@ def test_real_signed_release_apk_contains_only_protected_web_assets(tmp_path: Pa
         assert build["status"] == "success", build
         apk_response = client.get(build["download_url"])
         assert apk_response.status_code == 200
-        apk = tmp_path / "release.apk"
+        apk = tmp_path / "debug.apk"
         apk.write_bytes(apk_response.content)
         with zipfile.ZipFile(apk) as archive:
             names = set(archive.namelist())

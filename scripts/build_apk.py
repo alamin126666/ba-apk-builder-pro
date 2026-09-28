@@ -13,12 +13,12 @@ from app.security import validate_app_name, validate_package_name
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run the same signed APK pipeline used by the private dashboard.")
+    parser = argparse.ArgumentParser(description="Run the same debug APK pipeline used by the private dashboard.")
     parser.add_argument("--project", type=Path, required=True, help="An HTML file or ZIP project")
     parser.add_argument("--app-name", required=True)
     parser.add_argument("--package-name", required=True)
     parser.add_argument("--logo", type=Path)
-    parser.add_argument("--output", type=Path, required=True, help="Destination for the signed APK")
+    parser.add_argument("--output", type=Path, required=True, help="Destination for the installable debug APK")
     parser.add_argument("--log", type=Path, help="Private server-side diagnostic log")
     args = parser.parse_args()
     settings = Settings.from_env()
@@ -53,7 +53,7 @@ def main() -> int:
             work_root.rmdir()
         except OSError:
             pass
-    print(f"Release APK created at {args.output}", flush=True)
+    print(f"Debug APK created at {args.output}", flush=True)
     return 0
 
 

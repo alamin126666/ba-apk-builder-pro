@@ -3,8 +3,6 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
-val signingStoreFile = providers.environmentVariable("APK_SIGNING_STORE_FILE").orNull
-
 android {
     namespace = "@@PACKAGE_NAME@@"
     compileSdk = 35
@@ -27,21 +25,11 @@ android {
         }
     }
 
-    signingConfigs {
-        create("release") {
-            storeFile = signingStoreFile?.let { file(it) }
-            storePassword = providers.environmentVariable("APK_SIGNING_STORE_PASSWORD").orNull
-            keyAlias = providers.environmentVariable("APK_SIGNING_KEY_ALIAS").orNull
-            keyPassword = providers.environmentVariable("APK_SIGNING_KEY_PASSWORD").orNull
-        }
-    }
-
     buildTypes {
         getByName("release") {
             isMinifyEnabled = true
             isShrinkResources = true
             isDebuggable = false
-            signingConfig = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
         getByName("debug") {

@@ -6,7 +6,6 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, s
 from fastapi.responses import FileResponse
 
 from app.auth import require_auth, require_csrf
-from app.builder import signing_is_configured
 from app.project_files import UploadValidationError
 from app.security import validate_app_name, validate_package_name, valid_build_id
 
@@ -60,8 +59,6 @@ async def create_build(
     logo: UploadFile | None = File(None),
 ) -> dict:
     require_csrf(request)
-    if not signing_is_configured():
-        raise HTTPException(status_code=503, detail="Release signing is not configured on this server.")
     try:
         clean_name = validate_app_name(app_name)
         clean_package = validate_package_name(package_name)
@@ -128,6 +125,6 @@ async def download_build(build_id: str, request: Request) -> FileResponse:
     return FileResponse(
         apk,
         media_type="application/vnd.android.package-archive",
-        filename=f"{safe_name}.apk",
+        filename=f"{safe_name}-debug.apk",
         headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
     )

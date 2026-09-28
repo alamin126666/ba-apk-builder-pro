@@ -25,7 +25,9 @@ def test_login_cookie_flags_and_csrf(client) -> None:
     assert accepted.status_code == 303
     cookie = accepted.headers["set-cookie"].lower()
     assert "httponly" in cookie and "samesite=strict" in cookie
-    assert client.get("/dashboard").status_code == 200
+    dashboard = client.get("/dashboard")
+    assert dashboard.status_code == 200
+    assert "Release signing is not configured" not in dashboard.text
     assert client.post("/logout").status_code == 403
     csrf = re.search(r'<meta name="csrf-token" content="([0-9a-f]+)"', client.get("/dashboard").text).group(1)
     assert client.post("/logout", headers={"X-CSRF-Token": csrf}, follow_redirects=False).status_code == 303
@@ -46,6 +48,21 @@ def test_upload_request_body_limit(client) -> None:
     response = client.post("/api/build", content=b"x" * (3 * 1024 * 1024 + 1))
     assert response.status_code == 413
     assert response.json()["detail"] == "The upload exceeds the configured size limit."
+
+
+def test_build_submission_does_not_require_release_signing(client, monkeypatch) -> None:
+    for name in ("KEYSTORE_BASE64", "KEYSTORE_PASSWORD", "KEY_ALIAS", "KEY_PASSWORD"):
+        monkeypatch.delenv(name, raising=False)
+    client.post("/login", data={"password": TEST_PASSWORD}, follow_redirects=False)
+    csrf = re.search(r'<meta name="csrf-token" content="([0-9a-f]+)"', client.get("/dashboard").text).group(1)
+    response = client.post(
+        "/api/build",
+        data={"app_name": "Debug Test", "package_name": "com.example.debugtest"},
+        files={"web_project": ("index.html", b"<!doctype html><title>Debug test</title>", "text/html")},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert response.status_code == 202, response.text
+    assert response.json()["build"]["id"]
 
 
 def test_build_workspace_isolation(app_settings: Settings) -> None:

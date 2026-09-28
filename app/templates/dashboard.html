@@ -22,16 +22,10 @@
       <div>
         <p class="eyebrow">ANDROID APP STUDIO</p>
         <h1>Turn your web project<br class="desktop-break"> into an Android app.</h1>
-        <p class="intro-copy">Upload your site, choose its app identity, and build a signed APK ready to install.</p>
+        <p class="intro-copy">Upload your site, choose its app identity, and build an installable debug APK.</p>
       </div>
       <div class="intro-badge"><span class="pulse-dot"></span> PRIVATE BUILDER</div>
     </section>
-
-    {% if not signing_ready %}
-    <section class="alert alert-warning" role="status">
-      <strong>Release signing is not configured.</strong> Set <code>KEYSTORE_BASE64</code>, <code>KEYSTORE_PASSWORD</code>, <code>KEY_ALIAS</code>, and <code>KEY_PASSWORD</code> on the server before starting a build.
-    </section>
-    {% endif %}
 
     <div class="workspace-grid">
       <section class="card builder-card" aria-labelledby="builder-title">
@@ -101,7 +95,7 @@
           <ol class="build-steps" id="build-steps" aria-live="polite"></ol>
           <div class="result-box" id="result-box" hidden>
             <div class="result-check" aria-hidden="true">✓</div>
-            <div class="result-copy"><strong>APK build complete</strong><span>Your signed Android package is ready.</span></div>
+            <div class="result-copy"><strong>Debug APK build complete</strong><span>Your installable Android package is ready.</span></div>
             <a class="button button-primary download-button" id="download-link" href="#">Download APK <span aria-hidden="true">↓</span></a>
           </div>
           <div class="error-box" id="error-box" role="alert" hidden><strong>Build failed</strong><span id="error-message"></span></div>
