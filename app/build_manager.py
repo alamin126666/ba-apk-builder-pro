@@ -230,7 +230,7 @@ class BuildManager:
                 job.status = "failed"
                 job.stage = "Build failed"
                 job.error = exc.safe_message
-                logger.warning("Build %s failed; detailed diagnostics are in its private build log", job.id)
+                logger.warning("Build %s failed: %s; detailed diagnostics are in its private build log", job.id, exc.safe_message)
             except Exception:
                 job.status = "failed"
                 job.stage = "Build failed"

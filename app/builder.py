@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import threading
@@ -18,6 +19,17 @@ from scripts.protect_web import create_container
 
 Progress = Callable[[str, int], None]
 MAX_BUILD_LOG_BYTES = 10 * 1024 * 1024
+_DIAGNOSTIC_MARKERS = (
+    "FAILURE:", "What went wrong:", "Execution failed for task", "Could not find",
+    "Could not resolve", "No matching variant", "SDK location", "NDK at",
+    "CMake Error", "ninja: error:", "error:", "e: ", "FAILED",
+    "Unsupported class file", "Compilation error",
+)
+_PRIVATE_DIAGNOSTIC = re.compile(
+    r"(?i)\b(password|passphrase|token|secret|credential|keystore|private key|api[_ -]?key)\b"
+)
+_UNIX_PATH = re.compile(r"(?<![\w:])/(?:opt|tmp|root|home|app|usr)/[^\s:'\"`()]+")
+_WINDOWS_PATH = re.compile(r"(?<!\w)[A-Za-z]:\\[^\s<>:\"|?*]+")
 
 
 class BuildFailure(Exception):
@@ -250,7 +262,40 @@ def _run_gradle(project: Path, env: dict[str, str], log, progress: Progress, can
         if process.stdout is not None:
             process.stdout.close()
     if return_code != 0:
-        raise BuildFailure("The Android debug build failed. Review the server-side build log and try again.")
+        detail = _gradle_failure_detail(log.path)
+        if detail:
+            raise BuildFailure(f"The Android debug build failed: {detail}")
+        raise BuildFailure("The Android debug build failed. Review the private server-side build log and try again.")
+
+
+def _gradle_failure_detail(log_path: Path) -> str | None:
+    """Extract short Gradle failure context while hiding credentials and server paths."""
+    try:
+        lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return None
+    details: list[str] = []
+
+    def add_line(value: str) -> None:
+        value = value.strip()
+        if not value or _PRIVATE_DIAGNOSTIC.search(value):
+            return
+        if not any(marker.casefold() in value.casefold() for marker in _DIAGNOSTIC_MARKERS):
+            return
+        value = _UNIX_PATH.sub("<path>", value)
+        value = _WINDOWS_PATH.sub("<path>", value)
+        value = value[:240]
+        if value not in details and len(details) < 5:
+            details.append(value)
+
+    for index, line in enumerate(lines):
+        add_line(line)
+        if "What went wrong:" in line:
+            for context in lines[index + 1:index + 5]:
+                if context.strip().startswith("*"):
+                    break
+                add_line(context)
+    return " | ".join(details)[:900] or None
 
 
 def _audit_apk(apk: Path) -> None:
