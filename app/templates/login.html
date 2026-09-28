@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Sign in · APK Builder</title>
+  <link rel="stylesheet" href="/static/dashboard.css">
+</head>
+<body class="login-page">
+  <main class="login-card">
+    <div class="brand-mark" aria-hidden="true"><span>APK</span></div>
+    <p class="eyebrow">PRIVATE WORKSPACE</p>
+    <h1>Welcome back</h1>
+    <p class="muted">Sign in to build and manage your Android apps.</p>
+    {% if error %}<div class="alert alert-error" role="alert">{{ error }}</div>{% endif %}
+    <form action="/login" method="post" class="login-form">
+      <label for="password">Admin password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
+      <button class="button button-primary button-wide" type="submit">Sign in <span aria-hidden="true">→</span></button>
+    </form>
+    <p class="login-footnote"><span class="lock-icon" aria-hidden="true">●</span> Private builds stay behind your login.</p>
+  </main>
+</body>
+</html>

@@ -1,0 +1,27 @@
+#!/usr/bin/env sh
+set -eu
+GRADLE_VERSION=8.10.2
+GRADLE_SHA256=31c55713e40233a8303827ceb42ca48a47267a0ad4bab9177123121e71524c26
+
+if [ -n "${GRADLE_HOME:-}" ] && [ -x "$GRADLE_HOME/bin/gradle" ]; then
+  exec "$GRADLE_HOME/bin/gradle" "$@"
+fi
+if command -v gradle >/dev/null 2>&1; then
+  exec gradle "$@"
+fi
+
+GRADLE_CACHE="${GRADLE_USER_HOME:-${HOME:?HOME is required}/.gradle}/wrapper/dists/apk-builder/$GRADLE_VERSION"
+GRADLE_BIN="$GRADLE_CACHE/gradle-$GRADLE_VERSION/bin/gradle"
+if [ ! -x "$GRADLE_BIN" ]; then
+  mkdir -p "$GRADLE_CACHE"
+  ZIP_PATH="$GRADLE_CACHE/gradle-$GRADLE_VERSION-bin.zip"
+  curl --fail --location --silent --show-error "https://services.gradle.org/distributions/gradle-$GRADLE_VERSION-bin.zip" --output "$ZIP_PATH"
+  printf '%s  %s\n' "$GRADLE_SHA256" "$ZIP_PATH" | sha256sum --check --status || {
+    rm -f "$ZIP_PATH"
+    echo "Gradle distribution checksum verification failed." >&2
+    exit 1
+  }
+  unzip -q -o "$ZIP_PATH" -d "$GRADLE_CACHE"
+  rm -f "$ZIP_PATH"
+fi
+exec "$GRADLE_BIN" "$@"

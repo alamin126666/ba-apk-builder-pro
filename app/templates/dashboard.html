@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <title>APK Builder</title>
+  <link rel="stylesheet" href="/static/dashboard.css">
+  <script src="/static/dashboard.js" defer></script>
+</head>
+<body class="app-page">
+  <header class="topbar">
+    <a class="brand" href="/dashboard" aria-label="APK Builder home"><span class="brand-mark small">A</span><span>APK <b>Builder</b></span></a>
+    <form action="/logout" method="post" id="logout-form">
+      <button class="quiet-button" type="submit">Sign out <span aria-hidden="true">↗</span></button>
+    </form>
+  </header>
+
+  <main class="shell">
+    <section class="intro">
+      <div>
+        <p class="eyebrow">ANDROID APP STUDIO</p>
+        <h1>Turn your web project<br class="desktop-break"> into an Android app.</h1>
+        <p class="intro-copy">Upload your site, choose its app identity, and build a signed APK ready to install.</p>
+      </div>
+      <div class="intro-badge"><span class="pulse-dot"></span> PRIVATE BUILDER</div>
+    </section>
+
+    {% if not signing_ready %}
+    <section class="alert alert-warning" role="status">
+      <strong>Release signing is not configured.</strong> Set <code>KEYSTORE_BASE64</code>, <code>KEYSTORE_PASSWORD</code>, <code>KEY_ALIAS</code>, and <code>KEY_PASSWORD</code> on the server before starting a build.
+    </section>
+    {% endif %}
+
+    <div class="workspace-grid">
+      <section class="card builder-card" aria-labelledby="builder-title">
+        <div class="card-heading">
+          <div class="step-number">01</div>
+          <div><p class="eyebrow">NEW BUILD</p><h2 id="builder-title">App details</h2></div>
+        </div>
+        <form id="build-form" enctype="multipart/form-data">
+          <div class="field-group">
+            <label for="web-project">HTML / web project <span class="required">*</span></label>
+            <input id="web-project" name="web_project" type="file" accept=".html,.htm,.zip,text/html,application/zip" required hidden>
+            <button class="drop-zone" type="button" id="drop-zone" aria-describedby="project-hint">
+              <span class="upload-icon" aria-hidden="true">↑</span>
+              <span class="drop-title" id="drop-title">Drop your project here</span>
+              <span class="drop-subtitle">or <span class="browse-link">browse files</span></span>
+              <span class="file-chip" id="project-file" hidden></span>
+            </button>
+            <span class="field-hint" id="project-hint">One HTML file or a ZIP with index.html and its assets · up to {{ request.app.state.settings.max_upload_mb }} MB</span>
+          </div>
+
+          <div class="section-divider"><span>APP INFORMATION</span></div>
+          <div class="field-group">
+            <label for="app-name">App name <span class="required">*</span></label>
+            <input id="app-name" name="app_name" type="text" maxlength="50" placeholder="e.g. My Web App" autocomplete="off" required>
+            <span class="field-hint">Shown under the app icon · up to 50 characters</span>
+          </div>
+          <div class="field-group">
+            <label for="package-name">Package name <span class="required">*</span></label>
+            <input id="package-name" name="package_name" type="text" maxlength="255" placeholder="com.example.myapp" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+            <span class="field-hint">Lowercase segments separated by dots</span>
+          </div>
+
+          <div class="section-divider"><span>APP ICON</span><span class="optional">OPTIONAL</span></div>
+          <div class="icon-upload-row">
+            <div class="icon-preview" id="icon-preview"><span>A</span></div>
+            <div class="icon-upload-copy"><strong>Choose a launcher icon</strong><span>Square PNG, JPG, or WEBP works best.</span></div>
+            <label class="button button-secondary icon-browse" for="logo">Browse</label>
+            <input id="logo" name="logo" type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" hidden>
+          </div>
+          <span class="field-hint icon-hint" id="logo-name">No icon selected · a default icon will be used</span>
+
+          <button class="button button-primary build-button" id="build-button" type="submit">
+            <span class="button-label">Build APK</span><span class="button-arrow" aria-hidden="true">→</span>
+          </button>
+          <p class="privacy-note"><span aria-hidden="true">◈</span> Your web files are encrypted inside the generated app.</p>
+        </form>
+      </section>
+
+      <section class="card status-card" aria-labelledby="status-title">
+        <div class="card-heading status-heading">
+          <div class="step-number muted-step">02</div>
+          <div><p class="eyebrow">BUILD STATUS</p><h2 id="status-title">Ready when you are</h2></div>
+          <span class="status-pill status-idle" id="status-pill">IDLE</span>
+        </div>
+        <div class="empty-state" id="empty-state">
+          <div class="empty-art" aria-hidden="true"><span class="art-window"></span><span class="art-arrow">↗</span><span class="art-phone"></span></div>
+          <h3>Your next app starts here</h3>
+          <p>Choose a web project and fill in the app details. Your build progress and download will appear here.</p>
+        </div>
+        <div id="active-build" hidden>
+          <div class="build-summary">
+            <div><span class="summary-label">APP NAME</span><strong id="summary-name">—</strong></div>
+            <div><span class="summary-label">PACKAGE</span><span class="package-value" id="summary-package">—</span></div>
+          </div>
+          <div class="progress-label-row"><span id="stage-label">Waiting for a build slot</span><span id="progress-value">0%</span></div>
+          <progress class="progress-track" aria-label="Build progress" id="progress-track" value="0" max="100"></progress>
+          <ol class="build-steps" id="build-steps" aria-live="polite"></ol>
+          <div class="result-box" id="result-box" hidden>
+            <div class="result-check" aria-hidden="true">✓</div>
+            <div class="result-copy"><strong>APK build complete</strong><span>Your signed Android package is ready.</span></div>
+            <a class="button button-primary download-button" id="download-link" href="#">Download APK <span aria-hidden="true">↓</span></a>
+          </div>
+          <div class="error-box" id="error-box" role="alert" hidden><strong>Build failed</strong><span id="error-message"></span></div>
+          <button class="cancel-button" id="cancel-button" type="button" hidden>Cancel build</button>
+        </div>
+      </section>
+    </div>
+
+    <section class="history-section" aria-labelledby="history-title">
+      <div class="history-heading"><div><p class="eyebrow">RECENT ACTIVITY</p><h2 id="history-title">Build history</h2></div><span class="history-caption">Your latest builds on this server</span></div>
+      <div class="history-card" id="history-list"><div class="history-empty">Your completed and recent builds will show up here.</div></div>
+    </section>
+    <footer class="footer"><span>APK Builder</span><span>Private by design</span></footer>
+  </main>
+</body>
+</html>
