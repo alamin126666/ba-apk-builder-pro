@@ -5,7 +5,9 @@ import re
 import shutil
 import subprocess
 import threading
+import time
 import zipfile
+import logging
 from pathlib import Path
 from queue import Empty, Queue
 from typing import Callable
@@ -19,6 +21,7 @@ from scripts.protect_web import create_container
 
 Progress = Callable[[str, int], None]
 MAX_BUILD_LOG_BYTES = 10 * 1024 * 1024
+logger = logging.getLogger("apk_builder")
 _DIAGNOSTIC_MARKERS = (
     "FAILURE:", "What went wrong:", "Execution failed for task", "Could not find",
     "Could not resolve", "No matching variant", "SDK location", "NDK at",
@@ -144,7 +147,7 @@ def execute_build(
             "CMAKE_BUILD_PARALLEL_LEVEL": "1",
         })
         progress("Running Gradle", 50)
-        _run_gradle(android_project, process_env, gradle_log, progress, cancel_event)
+        _run_gradle(android_project, process_env, gradle_log, progress, cancel_event, settings.build_timeout_seconds)
         _check_cancel(cancel_event)
 
         progress("Creating APK", 92)
@@ -192,7 +195,14 @@ def _remove_if_incoming(path: Path, build_home: Path) -> None:
         pass
 
 
-def _run_gradle(project: Path, env: dict[str, str], log, progress: Progress, cancel_event: threading.Event) -> None:
+def _run_gradle(
+    project: Path,
+    env: dict[str, str],
+    log,
+    progress: Progress,
+    cancel_event: threading.Event,
+    timeout_seconds: int = 1200,
+) -> None:
     executable = project / ("gradlew.bat" if os.name == "nt" else "gradlew")
     if os.name != "nt" and not os.access(executable, os.X_OK):
         executable.chmod(0o755)
@@ -225,8 +235,27 @@ def _run_gradle(project: Path, env: dict[str, str], log, progress: Progress, can
     reader = threading.Thread(target=read_output, name="gradle-output-reader", daemon=True)
     reader.start()
     stream_done = False
+    started_at = time.monotonic()
+    next_heartbeat = started_at + 60
+    last_task = "waiting for Gradle task output"
     try:
         while process.poll() is None or not stream_done:
+            now = time.monotonic()
+            elapsed = now - started_at
+            if elapsed >= timeout_seconds:
+                try:
+                    process.terminate()
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+                raise BuildFailure(
+                    f"The Android build exceeded its {timeout_seconds}-second time limit and was stopped. "
+                    "Check Railway memory and outbound dependency access, then retry."
+                )
+            if now >= next_heartbeat:
+                logger.info("Android Gradle build still running after %s seconds; last task: %s", int(elapsed), last_task)
+                next_heartbeat = now + 60
             if cancel_event.wait(0.1):
                 process.terminate()
                 try:
@@ -243,12 +272,14 @@ def _run_gradle(project: Path, env: dict[str, str], log, progress: Progress, can
                 continue
             log.write(line)
             log.flush()
-            if "> Task :app:" in line:
-                if "externalNativeBuildDebug" in line:
+            task_match = re.match(r"^> Task ([A-Za-z0-9_:.-]+)", line.strip())
+            if task_match:
+                last_task = task_match.group(1)
+                if "externalNativeBuildDebug" in last_task:
                     progress("Running Gradle", 68)
-                elif "externalNativeBuild" in line or "configureCMake" in line or "buildCMake" in line:
+                elif "externalNativeBuild" in last_task or "configureCMake" in last_task or "buildCMake" in last_task:
                     progress("Building native library", 58)
-                elif "packageDebug" in line or "assembleDebug" in line:
+                elif "packageDebug" in last_task or "assembleDebug" in last_task:
                     progress("Creating APK", 88)
         return_code = process.wait()
     finally:

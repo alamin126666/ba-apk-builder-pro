@@ -54,7 +54,7 @@ The Android template pins compile/target SDK 35, build tools 35.0.0, NDK 27.2.12
 
 1. Push this project to a private Git repository and create a Railway project from it.
 2. Railway uses `railway.toml` and the repository `Dockerfile`; its image installs Python, JDK, Android command-line tools, SDK, build tools, NDK, CMake, and Gradle.
-3. In Railway **Variables**, set `ADMIN_PASSWORD`. Add `MAX_UPLOAD_MB`, `MAX_CONCURRENT_BUILDS`, and `BUILD_RETENTION_HOURS` as desired. Railway provides `PORT`; do not replace it with a fixed service port.
+3. In Railway **Variables**, set `ADMIN_PASSWORD`. Add `MAX_UPLOAD_MB`, `MAX_CONCURRENT_BUILDS`, `BUILD_RETENTION_HOURS`, and optionally `BUILD_TIMEOUT_SECONDS` as desired. Gradle builds time out after 20 minutes by default. Railway provides `PORT`; do not replace it with a fixed service port.
 4. Deploy. The app binds to `0.0.0.0:$PORT`; `/health` is the unauthenticated deployment health check. HTTPS requests receive `Secure`, `HttpOnly`, `SameSite=Strict` session cookies.
 5. Open the Railway public domain, sign in with `ADMIN_PASSWORD`, and submit a project from the dashboard.
 
@@ -114,7 +114,7 @@ That integration test submits a real HTML project through the authenticated API,
 - **Debug APK signature verification fails:** Gradle normally creates and signs with its debug keystore automatically. Check the private build log for Android SDK/build-tools errors; no release credentials are required.
 - **`SDK location not found` or NDK/CMake missing:** build and run the provided Docker image, or set the Android paths and install the pinned SDK, NDK, and CMake versions.
 - **Gradle dependency download or plugin resolution fails:** the first build downloads pinned Gradle/AGP/Kotlin artifacts from their official repositories; verify the container has outbound HTTPS access and retry after a transient outage.
-- **Gradle daemon disappears during a build:** Gradle and CMake are limited to one worker and a 768 MB Java heap to reduce Railway memory pressure. If the daemon still exits, increase the service's available memory and retry; the dashboard now shows a sanitized Gradle failure summary.
+- **Gradle daemon disappears or appears stuck:** Gradle and CMake are limited to one worker and a 768 MB Java heap to reduce Railway memory pressure. Gradle status polling reconnects after temporary network errors, active builds resume after dashboard refresh, and a build is stopped after `BUILD_TIMEOUT_SECONDS` (20 minutes by default). Railway logs emit a safe heartbeat with the last Gradle task each minute. If it times out or the daemon exits, increase the service's available memory and verify outbound dependency access; the dashboard shows a sanitized failure summary.
 - **ZIP rejected:** keep `index.html` at the archive root or in a single top-level folder; remove symlinks, scripts, executable files, unsupported extensions, duplicate names, and excessive compression ratios.
 - **APK installs but a local resource is missing:** use a relative URL with correct case, include that resource inside the uploaded web root, and check the file extension is on the allowed list. Local resource paths are case-sensitive on Android.
 - **Build queue full:** wait for an active build or lower upload size; at most 20 jobs wait in the queue in addition to active worker(s).

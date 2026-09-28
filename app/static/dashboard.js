@@ -9,6 +9,8 @@
   const buildButton = document.querySelector('#build-button');
   let selectedBuildId = null;
   let pollTimer = null;
+  let pollDelay = 1300;
+  const activeBuildKey = 'apk-builder-active-build';
 
   async function jsonResponse(response) {
     const data = await response.json().catch(() => ({}));
@@ -39,6 +41,32 @@
     emptyState.hidden = true;
     document.querySelector('#status-title').textContent = 'Build needs attention';
     setStatus('failed');
+  }
+
+  function showConnectionNotice() {
+    const box = document.querySelector('#error-box');
+    document.querySelector('#result-box').hidden = true;
+    document.querySelector('#error-box strong').textContent = 'Connection interrupted';
+    document.querySelector('#error-message').textContent = 'The build may still be running. Reconnecting to its status…';
+    box.classList.add('is-warning');
+    box.hidden = false;
+    document.querySelector('#cancel-button').hidden = false;
+    document.querySelector('#status-title').textContent = 'Reconnecting to your build';
+    setStatus('building');
+  }
+
+  function schedulePoll(buildId, delay = pollDelay) {
+    if (pollTimer) clearTimeout(pollTimer);
+    pollTimer = setTimeout(() => poll(buildId), delay);
+  }
+
+  function startPolling(buildId) {
+    selectedBuildId = buildId;
+    pollDelay = 1300;
+    sessionStorage.setItem(activeBuildKey, buildId);
+    buildButton.disabled = true;
+    buildButton.querySelector('.button-label').textContent = 'Build in progress…';
+    poll(buildId);
   }
 
   dropZone?.addEventListener('click', () => webInput.click());
@@ -90,13 +118,15 @@
     document.querySelector('#result-box').hidden = !success;
     if (success) document.querySelector('#download-link').href = build.download_url;
     const errorBox = document.querySelector('#error-box');
+    errorBox.classList.remove('is-warning');
     errorBox.hidden = build.status !== 'failed' && build.status !== 'cancelled';
     document.querySelector('#error-box strong').textContent = build.status === 'cancelled' ? 'Build cancelled' : 'Build failed';
     document.querySelector('#error-message').textContent = build.error || '';
     document.querySelector('#cancel-button').hidden = build.status !== 'queued' && build.status !== 'building';
     if (build.status === 'success' || build.status === 'failed' || build.status === 'cancelled') {
-      if (pollTimer) clearInterval(pollTimer);
+      if (pollTimer) clearTimeout(pollTimer);
       pollTimer = null;
+      sessionStorage.removeItem(activeBuildKey);
       buildButton.disabled = false;
       buildButton.querySelector('.button-label').textContent = 'Build another APK';
       refreshHistory();
@@ -123,17 +153,30 @@
         else { const spacer = document.createElement('span'); row.append(spacer); }
         host.append(row);
       }
+      const activeStatuses = new Set(['queued', 'building']);
+      const rememberedId = sessionStorage.getItem(activeBuildKey);
+      const activeBuildInfo = data.builds.find(build => build.id === rememberedId && activeStatuses.has(build.status))
+        || data.builds.find(build => activeStatuses.has(build.status));
+      if (!selectedBuildId && activeBuildInfo) {
+        document.querySelector('#active-build').hidden = false;
+        document.querySelector('#empty-state').hidden = true;
+        startPolling(activeBuildInfo.id);
+      }
     } catch (_) { /* A history refresh must not interrupt an active build. */ }
   }
 
   async function poll(buildId) {
     try {
       const data = await jsonResponse(await fetch(`/api/build/${encodeURIComponent(buildId)}/status`, { headers: { 'Accept': 'application/json' }, cache: 'no-store' }));
+      pollDelay = 1300;
       renderBuild(data.build);
+      if (data.build.status === 'success' || data.build.status === 'failed' || data.build.status === 'cancelled') return;
+      schedulePoll(buildId);
     } catch (error) {
-      if (pollTimer) clearInterval(pollTimer);
-      pollTimer = null;
-      showNotice(error.message);
+      if (error.message === 'Your session expired. Sign in again.') return;
+      showConnectionNotice();
+      pollDelay = Math.min(pollDelay * 2, 10000);
+      schedulePoll(buildId, pollDelay);
     }
   }
 
@@ -148,10 +191,8 @@
     document.querySelector('#result-box').hidden = true;
     try {
       const result = await jsonResponse(await fetch('/api/build', { method: 'POST', headers: { 'X-CSRF-Token': csrf }, body: data }));
-      selectedBuildId = result.build.id;
       renderBuild(result.build);
-      buildButton.querySelector('.button-label').textContent = 'Build in progress…';
-      pollTimer = setInterval(() => poll(selectedBuildId), 1300);
+      startPolling(result.build.id);
       await refreshHistory();
     } catch (error) {
       buildButton.disabled = false;

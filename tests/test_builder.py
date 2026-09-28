@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import io
+import os
 import threading
 
 import pytest
 
-from app.builder import BuildCancelled, _check_cancel, _gradle_failure_detail
+import app.builder as builder
+from app.builder import BuildCancelled, BuildFailure, BoundedBuildLog, _check_cancel, _gradle_failure_detail, _run_gradle
 
 
 def test_check_cancel_allows_active_build() -> None:
@@ -39,3 +42,35 @@ def test_gradle_failure_detail_redacts_paths_and_sensitive_lines(tmp_path) -> No
     assert "<path>" in detail
     assert "/opt/apk-builder" not in detail
     assert "do-not-display" not in detail
+
+
+def test_gradle_timeout_stops_child_and_reports_safe_error(tmp_path, monkeypatch) -> None:
+    class StalledProcess:
+        def __init__(self):
+            self.stdout = io.StringIO("")
+            self.stopped = False
+
+        def poll(self):
+            return 0 if self.stopped else None
+
+        def terminate(self):
+            self.stopped = True
+
+        def wait(self, timeout=None):
+            return 0
+
+        def kill(self):
+            self.stopped = True
+
+    process = StalledProcess()
+    monkeypatch.setattr(builder.subprocess, "Popen", lambda *args, **kwargs: process)
+    project = tmp_path / "android"
+    project.mkdir()
+    (project / ("gradlew.bat" if os.name == "nt" else "gradlew")).write_text("", encoding="utf-8")
+    log = BoundedBuildLog(tmp_path / "build.log")
+    try:
+        with pytest.raises(BuildFailure, match="time limit"):
+            _run_gradle(project, {}, log, lambda *_: None, threading.Event(), timeout_seconds=0.01)
+        assert process.stopped
+    finally:
+        log.close()

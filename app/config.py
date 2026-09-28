@@ -16,6 +16,7 @@ class Settings:
     build_root: Path
     project_root: Path
     queue_size: int = 20
+    build_timeout_seconds: int = 1200
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -35,6 +36,7 @@ class Settings:
             build_retention_hours=_positive_int("BUILD_RETENTION_HOURS", 24, maximum=720),
             build_root=Path(os.getenv("BUILD_ROOT", str(Path(tempfile.gettempdir()) / "apk-builder"))).resolve(),
             project_root=project_root,
+            build_timeout_seconds=_positive_int("BUILD_TIMEOUT_SECONDS", 1200, maximum=7200),
         )
 
 
