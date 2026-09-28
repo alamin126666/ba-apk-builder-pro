@@ -22,7 +22,7 @@ MAX_BUILD_LOG_BYTES = 10 * 1024 * 1024
 _DIAGNOSTIC_MARKERS = (
     "FAILURE:", "What went wrong:", "Execution failed for task", "Could not find",
     "Could not resolve", "No matching variant", "SDK location", "NDK at",
-    "CMake Error", "ninja: error:", "error:", "e: ", "FAILED",
+    "CMake Error", "ninja: error:", "error:", "FAILED",
     "Unsupported class file", "Compilation error",
 )
 _PRIVATE_DIAGNOSTIC = re.compile(
@@ -30,6 +30,7 @@ _PRIVATE_DIAGNOSTIC = re.compile(
 )
 _UNIX_PATH = re.compile(r"(?<![\w:])/(?:opt|tmp|root|home|app|usr)/[^\s:'\"`()]+")
 _WINDOWS_PATH = re.compile(r"(?<!\w)[A-Za-z]:\\[^\s<>:\"|?*]+")
+_KOTLIN_DIAGNOSTIC = re.compile(r"(?:^|\s)e:\s", re.IGNORECASE)
 
 
 class BuildFailure(Exception):
@@ -139,7 +140,8 @@ def execute_build(
             "ANDROID_SDK_ROOT": os.getenv("ANDROID_SDK_ROOT", "/opt/android-sdk"),
             "ANDROID_HOME": os.getenv("ANDROID_HOME", os.getenv("ANDROID_SDK_ROOT", "/opt/android-sdk")),
             "ANDROID_NDK_HOME": os.getenv("ANDROID_NDK_HOME", "/opt/android-sdk/ndk/27.2.12479018"),
-            "GRADLE_OPTS": "-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx3g",
+            "GRADLE_OPTS": "-Dorg.gradle.daemon=false",
+            "CMAKE_BUILD_PARALLEL_LEVEL": "1",
         })
         progress("Running Gradle", 50)
         _run_gradle(android_project, process_env, gradle_log, progress, cancel_event)
@@ -276,11 +278,12 @@ def _gradle_failure_detail(log_path: Path) -> str | None:
         return None
     details: list[str] = []
 
-    def add_line(value: str) -> None:
+    def add_line(value: str, *, force: bool = False) -> None:
         value = value.strip()
         if not value or _PRIVATE_DIAGNOSTIC.search(value):
             return
-        if not any(marker.casefold() in value.casefold() for marker in _DIAGNOSTIC_MARKERS):
+        matched = any(marker.casefold() in value.casefold() for marker in _DIAGNOSTIC_MARKERS)
+        if not force and not matched and not _KOTLIN_DIAGNOSTIC.search(value):
             return
         value = _UNIX_PATH.sub("<path>", value)
         value = _WINDOWS_PATH.sub("<path>", value)
@@ -294,7 +297,7 @@ def _gradle_failure_detail(log_path: Path) -> str | None:
             for context in lines[index + 1:index + 5]:
                 if context.strip().startswith("*"):
                     break
-                add_line(context)
+                add_line(context, force=True)
     return " | ".join(details)[:900] or None
 
 
