@@ -30,6 +30,8 @@
 
   function showNotice(message) {
     const box = document.querySelector('#error-box');
+    document.querySelector('#result-box').hidden = true;
+    document.querySelector('#cancel-button').hidden = true;
     document.querySelector('#error-message').textContent = message;
     document.querySelector('#error-box strong').textContent = 'Check your details';
     box.hidden = false;

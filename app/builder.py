@@ -30,6 +30,11 @@ class BuildCancelled(Exception):
     pass
 
 
+def _check_cancel(cancel_event: threading.Event) -> None:
+    if cancel_event.is_set():
+        raise BuildCancelled()
+
+
 class BoundedBuildLog:
     def __init__(self, path: Path):
         self.path = path
